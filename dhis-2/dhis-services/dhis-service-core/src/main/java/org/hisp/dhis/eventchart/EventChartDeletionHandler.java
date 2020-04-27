@@ -28,6 +28,8 @@ package org.hisp.dhis.eventchart;
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import java.util.Collection;
 import java.util.List;
 
@@ -36,19 +38,21 @@ import org.hisp.dhis.common.GenericAnalyticalObjectDeletionHandler;
 import org.hisp.dhis.dataelement.DataElement;
 import org.hisp.dhis.dataset.DataSet;
 import org.hisp.dhis.indicator.Indicator;
+import org.hisp.dhis.organisationunit.OrganisationUnitGroup;
+import org.hisp.dhis.organisationunit.OrganisationUnitGroupSet;
 import org.hisp.dhis.program.Program;
 import org.hisp.dhis.program.ProgramIndicator;
 import org.hisp.dhis.program.ProgramStage;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-
-import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * @author Chau Thu Tran
  */
 @Component( "org.hisp.dhis.eventchart.EventChartDeletionHandler" )
 public class EventChartDeletionHandler
-    extends GenericAnalyticalObjectDeletionHandler<EventChart>
+    extends
+    GenericAnalyticalObjectDeletionHandler<EventChart>
 {
     // -------------------------------------------------------------------------
     // Dependencies
@@ -56,10 +60,14 @@ public class EventChartDeletionHandler
 
     private final EventChartService eventChartService;
 
-    public EventChartDeletionHandler( EventChartService eventChartService )
+    private final JdbcTemplate jdbcTemplate;
+
+    public EventChartDeletionHandler( EventChartService eventChartService, JdbcTemplate jdbcTemplate )
     {
         checkNotNull( eventChartService );
+        checkNotNull( jdbcTemplate );
         this.eventChartService = eventChartService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     // -------------------------------------------------------------------------
@@ -71,7 +79,7 @@ public class EventChartDeletionHandler
     {
         return eventChartService;
     }
-    
+
     @Override
     protected String getClassName()
     {
@@ -88,7 +96,7 @@ public class EventChartDeletionHandler
     public void deleteDataElement( DataElement dataElement )
     {
         List<EventChart> eventCharts = getAnalyticalObjectService().getAnalyticalObjectsByDataDimension( dataElement );
-        
+
         for ( EventChart chart : eventCharts )
         {
             chart.getDataElementDimensions()
@@ -108,17 +116,17 @@ public class EventChartDeletionHandler
     @Override
     public void deleteProgramIndicator( ProgramIndicator programIndicator )
     {
-     // Ignore default implementation
+        // Ignore default implementation
     }
-    
+
     @Override
     public void deleteProgramStage( ProgramStage programStage )
     {
         Collection<EventChart> charts = eventChartService.getAllEventCharts();
-        
+
         for ( EventChart chart : charts )
         {
-            if( chart.getProgramStage().equals( programStage ))
+            if ( chart.getProgramStage().equals( programStage ) )
             {
                 eventChartService.deleteEventChart( chart );
             }
@@ -129,13 +137,36 @@ public class EventChartDeletionHandler
     public void deleteProgram( Program program )
     {
         Collection<EventChart> charts = eventChartService.getAllEventCharts();
-        
+
         for ( EventChart chart : charts )
         {
-            if ( chart.getProgram().equals( program ))
+            if ( chart.getProgram().equals( program ) )
             {
                 eventChartService.deleteEventChart( chart );
             }
         }
+    }
+
+    @Override
+    public String allowDeleteOrganisationUnitGroupSet( OrganisationUnitGroupSet groupSet )
+    {
+        String sql = "select count(*) "
+            + " from orgunitgroupsetdimension d JOIN eventchart_orgunitgroupsetdimensions e "
+            + " ON d.orgunitgroupsetdimensionid = e.orgunitgroupsetdimensionid " + " WHERE d.orgunitgroupsetid = "
+            + groupSet.getId();
+
+        return jdbcTemplate.queryForObject( sql, Integer.class ) == 0 ? null : "orgunitgroupsetdimension";
+    }
+
+    @Override
+    public String allowDeleteOrganisationUnitGroup( OrganisationUnitGroup group )
+    {
+        String sql = "select count(*) "
+            + " from orgunitgroupsetdimension d JOIN eventchart_orgunitgroupsetdimensions e "
+            + " ON d.orgunitgroupsetdimensionid = e.orgunitgroupsetdimensionid "
+            + " JOIN orgunitgroupsetdimension_items i ON d.orgunitgroupsetdimensionid = i.orgunitgroupsetdimensionid "
+            + " WHERE i.orgunitgroupid = " + group.getId();
+
+        return jdbcTemplate.queryForObject( sql, Integer.class ) == 0 ? null : "orgunitgroupsetdimension_items";
     }
 }

@@ -28,11 +28,14 @@ package org.hisp.dhis.report;
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import org.hisp.dhis.organisationunit.OrganisationUnitGroup;
+import org.hisp.dhis.organisationunit.OrganisationUnitGroupSet;
 import org.hisp.dhis.system.deletion.DeletionHandler;
 import org.hisp.dhis.visualization.Visualization;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-
-import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * @author Lars Helge Overland
@@ -40,7 +43,8 @@ import static com.google.common.base.Preconditions.checkNotNull;
  */
 @Component( "org.hisp.dhis.report.ReportDeletionHandler" )
 public class ReportDeletionHandler
-    extends DeletionHandler
+    extends
+    DeletionHandler
 {
     // -------------------------------------------------------------------------
     // Dependencies
@@ -48,10 +52,14 @@ public class ReportDeletionHandler
 
     private final ReportService reportService;
 
-    public ReportDeletionHandler( ReportService reportService )
+    private final JdbcTemplate jdbcTemplate;
+
+    public ReportDeletionHandler( ReportService reportService, final JdbcTemplate jdbcTemplate )
     {
         checkNotNull( reportService );
+        checkNotNull( jdbcTemplate );
         this.reportService = reportService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     // -------------------------------------------------------------------------
@@ -76,5 +84,28 @@ public class ReportDeletionHandler
         }
 
         return null;
+    }
+
+    @Override
+    public String allowDeleteOrganisationUnitGroupSet( OrganisationUnitGroupSet groupSet )
+    {
+        String sql = "select count(*) "
+            + " from orgunitgroupsetdimension d JOIN reporttable_orgunitgroupsetdimensions r "
+            + " ON d.orgunitgroupsetdimensionid = r.orgunitgroupsetdimensionid " + " WHERE d.orgunitgroupsetid = "
+            + groupSet.getId();
+
+        return jdbcTemplate.queryForObject( sql, Integer.class ) == 0 ? null : "orgunitgroupsetdimension";
+    }
+
+    @Override
+    public String allowDeleteOrganisationUnitGroup( OrganisationUnitGroup group )
+    {
+        String sql = "select count(*) "
+            + " from orgunitgroupsetdimension d JOIN reporttable_orgunitgroupsetdimensions r "
+            + " ON d.orgunitgroupsetdimensionid = r.orgunitgroupsetdimensionid "
+            + " JOIN orgunitgroupsetdimension_items i ON d.orgunitgroupsetdimensionid = i.orgunitgroupsetdimensionid "
+            + " WHERE i.orgunitgroupid = " + group.getId();
+
+        return jdbcTemplate.queryForObject( sql, Integer.class ) == 0 ? null : "orgunitgroupsetdimension_items";
     }
 }

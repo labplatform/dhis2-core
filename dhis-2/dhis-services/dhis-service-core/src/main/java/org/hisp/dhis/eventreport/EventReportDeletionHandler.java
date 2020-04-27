@@ -28,6 +28,8 @@ package org.hisp.dhis.eventreport;
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import java.util.Collection;
 import java.util.List;
 
@@ -36,19 +38,21 @@ import org.hisp.dhis.common.GenericAnalyticalObjectDeletionHandler;
 import org.hisp.dhis.dataelement.DataElement;
 import org.hisp.dhis.dataset.DataSet;
 import org.hisp.dhis.indicator.Indicator;
+import org.hisp.dhis.organisationunit.OrganisationUnitGroup;
+import org.hisp.dhis.organisationunit.OrganisationUnitGroupSet;
 import org.hisp.dhis.program.Program;
 import org.hisp.dhis.program.ProgramIndicator;
 import org.hisp.dhis.program.ProgramStage;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-
-import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * @author Chau Thu Tran
  */
 @Component( "org.hisp.dhis.eventreport.EventReportDeletionHandler" )
 public class EventReportDeletionHandler
-    extends GenericAnalyticalObjectDeletionHandler<EventReport>
+    extends
+    GenericAnalyticalObjectDeletionHandler<EventReport>
 {
     // -------------------------------------------------------------------------
     // Dependencies
@@ -56,10 +60,14 @@ public class EventReportDeletionHandler
 
     private final EventReportService eventReportService;
 
-    public EventReportDeletionHandler( EventReportService eventReportService )
+    private final JdbcTemplate jdbcTemplate;
+
+    public EventReportDeletionHandler( EventReportService eventReportService, JdbcTemplate jdbcTemplate )
     {
         checkNotNull( eventReportService );
+        checkNotNull( jdbcTemplate );
         this.eventReportService = eventReportService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     // -------------------------------------------------------------------------
@@ -83,12 +91,13 @@ public class EventReportDeletionHandler
     {
         // Ignore default implementation
     }
-    
+
     @Override
     public void deleteDataElement( DataElement dataElement )
     {
-        List<EventReport> eventReports = getAnalyticalObjectService().getAnalyticalObjectsByDataDimension( dataElement );
-        
+        List<EventReport> eventReports = getAnalyticalObjectService()
+            .getAnalyticalObjectsByDataDimension( dataElement );
+
         for ( EventReport report : eventReports )
         {
             report.getDataElementDimensions()
@@ -108,19 +117,19 @@ public class EventReportDeletionHandler
     @Override
     public void deleteProgramIndicator( ProgramIndicator programIndicator )
     {
-     // Ignore default implementation
+        // Ignore default implementation
     }
-    
+
     @Override
     public void deleteProgramStage( ProgramStage programStage )
     {
         Collection<EventReport> charts = eventReportService.getAllEventReports();
-        
+
         for ( EventReport chart : charts )
         {
-            if ( chart.getProgramStage().equals( programStage ))
+            if ( chart.getProgramStage().equals( programStage ) )
             {
-               eventReportService.deleteEventReport( chart );
+                eventReportService.deleteEventReport( chart );
             }
         }
     }
@@ -129,13 +138,36 @@ public class EventReportDeletionHandler
     public void deleteProgram( Program program )
     {
         Collection<EventReport> charts = eventReportService.getAllEventReports();
-        
+
         for ( EventReport chart : charts )
         {
-            if( chart.getProgram().equals( program ))
+            if ( chart.getProgram().equals( program ) )
             {
-               eventReportService.deleteEventReport( chart );
+                eventReportService.deleteEventReport( chart );
             }
         }
+    }
+
+    @Override
+    public String allowDeleteOrganisationUnitGroupSet( OrganisationUnitGroupSet groupSet )
+    {
+        String sql = "select count(*) "
+            + " from orgunitgroupsetdimension d JOIN eventreport_orgunitgroupsetdimensions e "
+            + " ON d.orgunitgroupsetdimensionid = e.orgunitgroupsetdimensionid " + " WHERE d.orgunitgroupsetid = "
+            + groupSet.getId();
+
+        return jdbcTemplate.queryForObject( sql, Integer.class ) == 0 ? null : "orgunitgroupsetdimension";
+    }
+
+    @Override
+    public String allowDeleteOrganisationUnitGroup( OrganisationUnitGroup group )
+    {
+        String sql = "select count(*) "
+            + " from orgunitgroupsetdimension d JOIN eventreport_orgunitgroupsetdimensions e "
+            + " ON d.orgunitgroupsetdimensionid = e.orgunitgroupsetdimensionid "
+            + " JOIN orgunitgroupsetdimension_items i ON d.orgunitgroupsetdimensionid = i.orgunitgroupsetdimensionid "
+            + " WHERE i.orgunitgroupid = " + group.getId();
+
+        return jdbcTemplate.queryForObject( sql, Integer.class ) == 0 ? null : "orgunitgroupsetdimension_items";
     }
 }

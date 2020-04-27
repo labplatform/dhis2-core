@@ -28,22 +28,25 @@ package org.hisp.dhis.mapping;
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import java.util.List;
 
 import org.hisp.dhis.common.AnalyticalObjectService;
 import org.hisp.dhis.common.GenericAnalyticalObjectDeletionHandler;
 import org.hisp.dhis.legend.LegendSet;
+import org.hisp.dhis.organisationunit.OrganisationUnitGroup;
 import org.hisp.dhis.organisationunit.OrganisationUnitGroupSet;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-
-import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * @author Lars Helge Overland
  */
 @Component( "org.hisp.dhis.mapping.MapViewDeletionHandler" )
 public class MapViewDeletionHandler
-    extends GenericAnalyticalObjectDeletionHandler<MapView>
+    extends
+    GenericAnalyticalObjectDeletionHandler<MapView>
 {
     // -------------------------------------------------------------------------
     // Dependencies
@@ -51,10 +54,14 @@ public class MapViewDeletionHandler
 
     private final MappingService mappingService;
 
-    public MapViewDeletionHandler( MappingService mappingService )
+    private final JdbcTemplate jdbcTemplate;
+
+    public MapViewDeletionHandler( MappingService mappingService, JdbcTemplate jdbcTemplate )
     {
         checkNotNull( mappingService );
+        checkNotNull( jdbcTemplate );
         this.mappingService = mappingService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     // -------------------------------------------------------------------------
@@ -77,19 +84,19 @@ public class MapViewDeletionHandler
     public void deleteLegendSet( LegendSet legendSet )
     {
         List<MapView> mapViews = mappingService.getAnalyticalObjects( legendSet );
-        
+
         for ( MapView mapView : mapViews )
         {
             mapView.setLegendSet( null );
             mappingService.update( mapView );
         }
     }
-    
+
     @Override
     public void deleteOrganisationUnitGroupSet( OrganisationUnitGroupSet groupSet )
     {
         List<MapView> mapViews = mappingService.getMapViewsByOrganisationUnitGroupSet( groupSet );
-        
+
         for ( MapView mapView : mapViews )
         {
             mapView.setOrganisationUnitGroupSet( null );
@@ -101,5 +108,26 @@ public class MapViewDeletionHandler
     public String allowDeleteMapView( MapView mapView )
     {
         return mappingService.countMapViewMaps( mapView ) == 0 ? null : ERROR;
+    }
+
+    @Override
+    public String allowDeleteOrganisationUnitGroupSet( OrganisationUnitGroupSet groupSet )
+    {
+        String sql = "select count(*) " + " from orgunitgroupsetdimension d JOIN mapview_orgunitgroupsetdimensions m "
+            + " ON d.orgunitgroupsetdimensionid = m.orgunitgroupsetdimensionid " + " WHERE d.orgunitgroupsetid = "
+            + groupSet.getId();
+
+        return jdbcTemplate.queryForObject( sql, Integer.class ) == 0 ? null : "orgunitgroupsetdimension";
+    }
+
+    @Override
+    public String allowDeleteOrganisationUnitGroup( OrganisationUnitGroup group )
+    {
+        String sql = "select count(*) " + " from orgunitgroupsetdimension d JOIN mapview_orgunitgroupsetdimensions m "
+            + " ON d.orgunitgroupsetdimensionid = m.orgunitgroupsetdimensionid "
+            + " JOIN orgunitgroupsetdimension_items i ON d.orgunitgroupsetdimensionid = i.orgunitgroupsetdimensionid "
+            + " WHERE i.orgunitgroupid = " + group.getId();
+
+        return jdbcTemplate.queryForObject( sql, Integer.class ) == 0 ? null : "orgunitgroupsetdimension_items";
     }
 }

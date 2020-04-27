@@ -35,6 +35,9 @@ import java.util.List;
 import org.hisp.dhis.common.AnalyticalObjectService;
 import org.hisp.dhis.common.GenericAnalyticalObjectDeletionHandler;
 import org.hisp.dhis.legend.LegendSet;
+import org.hisp.dhis.organisationunit.OrganisationUnitGroup;
+import org.hisp.dhis.organisationunit.OrganisationUnitGroupSet;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -44,10 +47,15 @@ public class VisualizationDeletionHandler
 {
     private final VisualizationService visualizationService;
 
-    public VisualizationDeletionHandler( final VisualizationService visualizationService )
+    private final JdbcTemplate jdbcTemplate;
+
+    public VisualizationDeletionHandler( final VisualizationService visualizationService,
+        final JdbcTemplate jdbcTemplate )
     {
         checkNotNull( visualizationService );
+        checkNotNull( jdbcTemplate );
         this.visualizationService = visualizationService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
@@ -72,5 +80,28 @@ public class VisualizationDeletionHandler
             visualization.setLegendSet( null );
             visualizationService.update( visualization );
         }
+    }
+
+    @Override
+    public String allowDeleteOrganisationUnitGroupSet( OrganisationUnitGroupSet groupSet )
+    {
+        String sql = "select count(*) "
+            + " from orgunitgroupsetdimension d JOIN visualization_orgunitgroupsetdimensions v "
+            + " ON d.orgunitgroupsetdimensionid = v.orgunitgroupsetdimensionid " + " WHERE d.orgunitgroupsetid = "
+            + groupSet.getId();
+
+        return jdbcTemplate.queryForObject( sql, Integer.class ) == 0 ? null : "orgunitgroupsetdimension";
+    }
+
+    @Override
+    public String allowDeleteOrganisationUnitGroup( OrganisationUnitGroup group )
+    {
+        String sql = "select count(*) "
+            + " from orgunitgroupsetdimension d JOIN visualization_orgunitgroupsetdimensions v "
+            + " ON d.orgunitgroupsetdimensionid = v.orgunitgroupsetdimensionid "
+            + " JOIN orgunitgroupsetdimension_items i ON d.orgunitgroupsetdimensionid = i.orgunitgroupsetdimensionid "
+            + " WHERE i.orgunitgroupid = " + group.getId();
+
+        return jdbcTemplate.queryForObject( sql, Integer.class ) == 0 ? null : "orgunitgroupsetdimension_items";
     }
 }
